@@ -3,10 +3,10 @@ from qiskit_optimization.algorithms import CplexOptimizer,  GurobiOptimizer
 import numpy as np
 
 # def consts and weights
-num_bins = 4  # num of bins
-num_items = 6 # num of items
-B = 10 # weight of bin
-weights = np.random.randint(1, B/2, num_items)
+num_bins = 3
+num_items = 5
+max_weight = 10
+weights = np.random.randint(2, max_weight/2+1, num_items)
 print('weights', weights)
 
 # define all vars
@@ -29,7 +29,7 @@ for j in range(num_bins):
     weight_constraint = {}
     for i in range(num_items):
         weight_constraint[(f"x{i}{j}", f'y{j}')] = weights[i].item() 
-    qp.quadratic_constraint(quadratic=weight_constraint, sense="<=", rhs=10)
+    qp.quadratic_constraint(quadratic=weight_constraint, sense="<=", rhs=max_weight)
 
 # use all items constraint
 for i in range(num_items):
