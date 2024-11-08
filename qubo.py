@@ -41,7 +41,7 @@ for i in range(num_items):
 #         Q_matrix[j][num_bins + i * num_bins + j] = penalty_3
 
 
-# Convert to Hermitian matrix if needed
+# Convert to Hermitian matrix if needed. Note: not needed because upper triangular is equivalent
 # for r in range(Q_matrix.shape[0]):
 #     for c in range(r+1, Q_matrix.shape[0]):
 #         Q_matrix[r][c] = Q_matrix[r][c]/2
@@ -86,26 +86,20 @@ def brute_force():
 
 from dwave.samplers import SimulatedAnnealingSampler, TabuSampler
 import dimod
-def annealing():
-    """using the above constructed Q_matrix, which should have the constraints encoded."""
-    qubo = {(i, j): Q_matrix[i, j] for i in range(Q_matrix.shape[0]) for j in range(Q_matrix.shape[1]) if Q_matrix[i, j] != 0}
-    bqm = dimod.BQM.from_qubo(qubo)
-    sampler = dimod.ExactSolver()
-    sampleset = sampler.sample(bqm, num_reads=500)
-    print(sampleset.record)
-    for var, val in sampleset.first[0].items():
-        print(f"{var}: {val}")
 
-def annealing2():
-    """constructing Q_matrix from the ground up, then adding constraints to bqm."""
+def annealing():
+    """, then adding constraints to bqm."""
     penalty_1 = penalty_2 = 2
     penalty_3 = 2
     Q_matrix = np.diag(diagonal)
+
+    # fill in qubo coefficients
     qubo = {(i, j): Q_matrix[i, j] for i in range(Q_matrix.shape[0]) for j in range(Q_matrix.shape[1])}
     bqm = dimod.BQM.from_qubo(qubo)
     bqm.relabel_variables({j: f'y{j}' for j in range(num_bins)})
     bqm.relabel_variables({i*num_bins+j+num_bins: f'x{i}{j}' for i in range(num_items) for j in range(num_bins)})
     
+    # add constraints
     # weight constraint per bin
     for j in range(num_bins):
         bqm.add_linear_inequality_constraint(
@@ -140,6 +134,34 @@ def annealing2():
     for j in range(num_bins):
         print(f'y{j}' + str(sampleset.first[0][f'y{j}']))
 
-brute_force()
+brute_force() 
 annealing()
-annealing2()
+
+
+## Explanation:
+# brute force works with mutliple test cases, seems to always return correct solution. 
+# When testing with lower values for bins and items, I had to reduce the penalty
+
+# Both annealing implementations dont seem to work. The returned output from the annealing2() seems to 
+# not respect the constraints. As you can see below, the value for x00 and x01 is 1, implying item 0 
+# is in both bins 0 and 1, which is incorrect. Also I was not able to figure out why all the y's are 0
+
+# x00 1
+# x01 1
+# x02 0
+
+# x10 0
+# x11 0
+# x12 1
+
+# x20 1
+# x21 0
+# x22 1
+
+# x30 0
+# x31 1
+# x32 0
+
+# y00
+# y10
+# y20

@@ -95,6 +95,8 @@ for i in range(n_steps):
     print(cost_function(parameters))
 print(parameters)
 
+# the printed output is: [ 0.01237999  0.04352851  0.00680132  0.00618891 -0.00489406 -0.0022344  -0.0012836   0.00255741  0.00180362 -0.0051489   0.0013249   0.00397394 0.00100394  0.01072322  0.00594962]
+
 # Get the result from the ideal parameters
 @qml.qnode(dev)
 def get_x(params):
@@ -103,3 +105,7 @@ def get_x(params):
     return [qml.expval(qml.PauliZ(wire)) for wire in H.wires]
 output = get_x(parameters)
 print("Circuit output:", output)
+
+# Circuit output: [1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0, 1.0]
+
+# Explanation: we suspect there might be an error with the translation of coefficients into the Q_matrix because of the change of variable
