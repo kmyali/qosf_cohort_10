@@ -6,12 +6,14 @@ num_items = 4
 matrix_len = num_bins+num_bins*num_items
 max_weight = 10 # aka bin capacity
 weights = np.random.random(num_items)
-weights = [3,4,5,6]
-scaled_weights = [w/max_weight for w in weights]
-# scaled_weights = weights
+weights = [3,4,5,6] # comment this line to use random weights
+# scaled_weights = [w/max_weight for w in weights]
+# print(scaled_weights)
+scaled_weights = weights
 
-penalty_1 = 20
-penalty_2 = 20
+penalty_1 = 2
+penalty_2 = 2
+penalty_3 = 5
 
 diagonal = [1.0] * num_bins + [penalty_1] * (num_bins * num_items)
 
@@ -31,26 +33,40 @@ for i in range(num_items):
         for k in range(j+1, num_bins):
             Q_matrix[(i*num_bins+j)+num_bins][(i*num_bins+k)+num_bins] = 2*penalty_1
 
-def brute_force():   
-    def is_valid(x):
-        # Use at least one bin.
-        if not any(x[0:num_bins]):
-            return False
-        
-        # each item must be in 1 bin. 
-        for i in range(num_items):
-            if not sum(x[num_bins+i*num_bins:num_bins+(i+1)*num_bins]) == 1:
-                return False
-        
-        # ensure no items in unused bins
-        for i in range(num_bins):
-            if not x[i]:
-                for j in range(num_bins, matrix_len, num_bins):
-                    if x[j+i]:
-                        return False
-        print('True')
-        return True
+# Note: adding or removing this constraint seems to have no effect on final answer.
+# constraint 3: activate items in active bins
+# for j in range(num_bins):
+#     for i in range(num_items):
+#         # Penalize each x_{ij} if y_j is 0 (inactive bin)
+#         Q_matrix[j][num_bins + i * num_bins + j] = penalty_3
 
+
+# Convert to Hermitian matrix if needed
+# for r in range(Q_matrix.shape[0]):
+#     for c in range(r+1, Q_matrix.shape[0]):
+#         Q_matrix[r][c] = Q_matrix[r][c]/2
+#         Q_matrix[c][r] = Q_matrix[r][c]
+
+
+def is_valid(x):
+    # Use at least one bin.
+    if not any(x[0:num_bins]):
+        return False
+    
+    # each item must be in 1 bin. 
+    for i in range(num_items):
+        if not sum(x[num_bins+i*num_bins:num_bins+(i+1)*num_bins]) == 1:
+            return False
+    
+    # ensure no items in unused bins
+    for i in range(num_bins):
+        if not x[i]:
+            for j in range(num_bins, matrix_len, num_bins):
+                if x[j+i]:
+                    return False
+    return True
+
+def brute_force():   
     min_cost = np.inf
     for i in range(2**(matrix_len)):
         binary_str = np.binary_repr(i, width=matrix_len)
@@ -60,33 +76,43 @@ def brute_force():
             cost = (x.T @ Q_matrix @ x)
             if cost <= min_cost:
                 min_cost = cost
-                min_matrix = x.copy()
-                # print(f'cost {cost} for matrix {min_matrix} is less than min_cost {min_cost}')
+                min_x = x.copy()
+                # print(f'cost {cost} for string {min_x} is less than min_cost {min_cost}')
 
-    print(f'min_cost is {min_cost} for matrix {min_matrix}')
+    print(f'min_cost is {min_cost} for string {min_x}')
+
+
+## Annealing ##
 
 from dwave.samplers import SimulatedAnnealingSampler, TabuSampler
 import dimod
 def annealing():
-    qubo = {(i, j): Q_matrix[i, j] for i in range(Q_matrix.shape[0]) for j in range(Q_matrix.shape[1])}
+    """using the above constructed Q_matrix, which should have the constraints encoded."""
+    qubo = {(i, j): Q_matrix[i, j] for i in range(Q_matrix.shape[0]) for j in range(Q_matrix.shape[1]) if Q_matrix[i, j] != 0}
     bqm = dimod.BQM.from_qubo(qubo)
-    sampler = TabuSampler()
-    sampleset = sampler.sample(bqm, num_reads=1000)
+    sampler = dimod.ExactSolver()
+    sampleset = sampler.sample(bqm, num_reads=500)
     print(sampleset.record)
-    print(sampleset.first)
+    for var, val in sampleset.first[0].items():
+        print(f"{var}: {val}")
 
 def annealing2():
+    """constructing Q_matrix from the ground up, then adding constraints to bqm."""
+    penalty_1 = penalty_2 = 2
+    penalty_3 = 2
     Q_matrix = np.diag(diagonal)
     qubo = {(i, j): Q_matrix[i, j] for i in range(Q_matrix.shape[0]) for j in range(Q_matrix.shape[1])}
     bqm = dimod.BQM.from_qubo(qubo)
+    bqm.relabel_variables({j: f'y{j}' for j in range(num_bins)})
+    bqm.relabel_variables({i*num_bins+j+num_bins: f'x{i}{j}' for i in range(num_items) for j in range(num_bins)})
     
     # weight constraint per bin
     for j in range(num_bins):
         bqm.add_linear_inequality_constraint(
-            [(f"x{i}{j}", weights[i]) for i in range(num_items)],
-            [7.29, 0.85],
+            [(f"x{i}{j}", weights[i]*penalty_2) for i in range(num_items)],
+            [7.29, 0.85], # from paper!
             "unbalanced",
-            ub=max_weight,
+            ub=max_weight*penalty_2,
             penalization_method="unbalanced",
         )
     
@@ -96,7 +122,13 @@ def annealing2():
             [(f"x{i}{j}", 1) for j in range(num_bins)],
             penalty_1,
             -1)
-    print(bqm)
+    
+    # Add "activate item only when bin is used" constraint
+    for j in range(num_bins):
+        for i in range(num_items):
+            # Penalize each x_{ij} if y_j is 0
+            bqm.add_interaction(f"y{j}", f"x{i}{j}", penalty_3)
+
     sampler = SimulatedAnnealingSampler()
     sampleset = sampler.sample(bqm, num_reads=5000)
     print(sampleset.first[0])
@@ -105,6 +137,9 @@ def annealing2():
         for j in range(num_bins):
             print(f'x{i}{j} ' + str(sampleset.first[0][f'x{i}{j}']))
         print()
+    for j in range(num_bins):
+        print(f'y{j}' + str(sampleset.first[0][f'y{j}']))
 
-
+brute_force()
+annealing()
 annealing2()

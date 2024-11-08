@@ -4,9 +4,10 @@ import numpy as np
 
 # def consts and weights
 num_bins = 3
-num_items = 5
+num_items = 4
 max_weight = 10
 weights = np.random.randint(2, max_weight/2+1, num_items)
+# weights = [3,4,5,6]
 print('weights', weights)
 
 # define all vars
@@ -28,7 +29,7 @@ qp.minimize(linear=to_be_minimized)
 for j in range(num_bins):
     weight_constraint = {}
     for i in range(num_items):
-        weight_constraint[(f"x{i}{j}", f'y{j}')] = weights[i].item() 
+        weight_constraint[(f"x{i}{j}", f'y{j}')] = weights[i].item() # adding yj to ensure bin is activated iff there is an item in it
     qp.quadratic_constraint(quadratic=weight_constraint, sense="<=", rhs=max_weight)
 
 # use all items constraint
